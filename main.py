@@ -3,12 +3,14 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from models import User, Photo, Destination, Sumit
 from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
+from google.cloud import storage
 import datetime
 
+CLOUD_STORAGE_BUCKET = 'sumit_images'
 SQLALCHEMY_DATABASE_DEBUG_URI = 'mysql+pymysql://root:@104.197.242.244:3306/sumit?unix_socket=/cloudsql/sumit-149304:sumit'
 SQLALCHEMY_DATABASE_PROD_URI = 'mysql+mysqldb://root:@/sumit?unix_socket=/cloudsql/sumit-149304:us-central1:sumit'
 
-engine = create_engine(SQLALCHEMY_DATABASE_PROD_URI)
+engine = create_engine(SQLALCHEMY_DATABASE_DEBUG_URI)
 Session = sessionmaker(bind=engine)
 
 app = Flask(__name__)
@@ -156,6 +158,35 @@ def get_destinations():
         return jsonify({"statusCode": 1, "desc": "Error checking if user is verified: " + str(e)}), 500
     finally:
         db_session.close()
+
+
+# [START upload]
+@app.route('/upload', methods=['POST'])
+def upload():
+    """Process the uploaded file and upload it to Google Cloud Storage."""
+    uploaded_file = request.files.get('file')
+
+    if not uploaded_file:
+        return 'No file uploaded.', 400
+
+    # Create a Cloud Storage client.
+    gcs = storage.Client()
+
+    # Get the bucket that the file will be uploaded to.
+    bucket = gcs.get_bucket(CLOUD_STORAGE_BUCKET)
+
+    # Create a new blob and upload the file's content.
+    blob = bucket.blob(uploaded_file.filename)
+
+    blob.upload_from_string(
+        uploaded_file.read(),
+        content_type=uploaded_file.content_type
+    )
+
+    # The public URL can be used to directly access the uploaded file via HTTP.
+    return blob.public_url
+# [END upload]
+
 
 if __name__ == '__main__':
     app.run(debug=True)
